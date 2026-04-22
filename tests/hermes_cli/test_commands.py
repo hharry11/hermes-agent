@@ -182,6 +182,13 @@ class TestGatewayKnownCommands:
     def test_is_frozenset(self):
         assert isinstance(GATEWAY_KNOWN_COMMANDS, frozenset)
 
+    def test_gateway_does_not_expose_cli_only_reload_or_gquota(self):
+        for name in ("reload", "gquota"):
+            cmd = resolve_command(name)
+            assert cmd is not None
+            assert cmd.cli_only is True
+            assert name not in GATEWAY_KNOWN_COMMANDS
+
 
 class TestGatewayHelpLines:
     def test_returns_nonempty_list(self):
@@ -190,10 +197,9 @@ class TestGatewayHelpLines:
 
     def test_excludes_cli_only_commands_without_config_gate(self):
         lines = gateway_help_lines()
-        joined = "\n".join(lines)
         for cmd in COMMAND_REGISTRY:
             if cmd.cli_only and not cmd.gateway_config_gate:
-                assert f"`/{cmd.name}" not in joined, \
+                assert not any(line.startswith(f"`/{cmd.name}`") for line in lines), \
                     f"cli_only command /{cmd.name} should not be in gateway help"
 
     def test_includes_alias_note_for_bg(self):
@@ -201,6 +207,11 @@ class TestGatewayHelpLines:
         bg_line = [l for l in lines if "/background" in l]
         assert len(bg_line) == 1
         assert "/bg" in bg_line[0]
+
+    def test_excludes_cli_only_reload_and_gquota(self):
+        lines = gateway_help_lines()
+        assert not any(line.startswith("`/reload`") for line in lines)
+        assert not any(line.startswith("`/gquota`") for line in lines)
 
 
 class TestTelegramBotCommands:
@@ -230,6 +241,11 @@ class TestTelegramBotCommands:
                 tg_name = cmd.name.replace("-", "_")
                 assert tg_name not in names
 
+    def test_reload_and_gquota_not_exported_to_telegram(self):
+        names = {name for name, _ in telegram_bot_commands()}
+        assert "reload" not in names
+        assert "gquota" not in names
+
 
 class TestSlackSubcommandMap:
     def test_returns_dict(self):
@@ -251,6 +267,11 @@ class TestSlackSubcommandMap:
         for cmd in COMMAND_REGISTRY:
             if cmd.cli_only and not cmd.gateway_config_gate:
                 assert cmd.name not in mapping
+
+    def test_reload_and_gquota_not_exported_to_slack(self):
+        mapping = slack_subcommand_map()
+        assert "reload" not in mapping
+        assert "gquota" not in mapping
 
 
 # ---------------------------------------------------------------------------
