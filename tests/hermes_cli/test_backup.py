@@ -1127,6 +1127,54 @@ class TestQuickSnapshot:
         from hermes_cli.backup import restore_quick_snapshot
         assert restore_quick_snapshot("nonexistent", hermes_home=hermes_home) is False
 
+    def test_restore_rejects_snapshot_id_traversal(self, hermes_home, tmp_path):
+        from hermes_cli.backup import restore_quick_snapshot
+
+        outside = tmp_path / "outside-snapshot"
+        outside.mkdir()
+        (outside / "manifest.json").write_text(
+            json.dumps({"files": {"config.yaml": 1}})
+        )
+        (outside / "config.yaml").write_text("model:\n  provider: escaped\n")
+
+        result = restore_quick_snapshot("../outside-snapshot", hermes_home=hermes_home)
+
+        assert result is False
+        assert "openrouter" in (hermes_home / "config.yaml").read_text()
+
+    def test_restore_skips_manifest_path_traversal(self, hermes_home, tmp_path):
+        from hermes_cli.backup import create_quick_snapshot, restore_quick_snapshot
+
+        snap_id = create_quick_snapshot(hermes_home=hermes_home)
+        snap_dir = hermes_home / "state-snapshots" / snap_id
+        escape_target = tmp_path / "outside.txt"
+        (hermes_home / "state-snapshots" / "outside.txt").write_text("escaped")
+        (snap_dir / "manifest.json").write_text(
+            json.dumps({"files": {"config.yaml": 1, "../outside.txt": 1}})
+        )
+
+        result = restore_quick_snapshot(snap_id, hermes_home=hermes_home)
+
+        assert result is True
+        assert not escape_target.exists()
+        assert "openrouter" in (hermes_home / "config.yaml").read_text()
+
+    def test_restore_skips_absolute_manifest_paths(self, hermes_home, tmp_path):
+        from hermes_cli.backup import create_quick_snapshot, restore_quick_snapshot
+
+        snap_id = create_quick_snapshot(hermes_home=hermes_home)
+        snap_dir = hermes_home / "state-snapshots" / snap_id
+        absolute_target = tmp_path / "absolute.txt"
+        (absolute_target).write_text("do not restore")
+        (snap_dir / "manifest.json").write_text(
+            json.dumps({"files": {"config.yaml": 1, str(absolute_target): 1}})
+        )
+
+        result = restore_quick_snapshot(snap_id, hermes_home=hermes_home)
+
+        assert result is True
+        assert "openrouter" in (hermes_home / "config.yaml").read_text()
+
     def test_auto_prune(self, hermes_home):
         from hermes_cli.backup import create_quick_snapshot, list_quick_snapshots, _QUICK_DEFAULT_KEEP
         for i in range(_QUICK_DEFAULT_KEEP + 5):

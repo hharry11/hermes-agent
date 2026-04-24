@@ -575,6 +575,15 @@ def restore_quick_snapshot(
     home = hermes_home or get_hermes_home()
     root = _quick_snapshot_root(home)
     snap_dir = root / snapshot_id
+    root_resolved = root.resolve(strict=False)
+    home_resolved = home.resolve(strict=False)
+
+    try:
+        snap_dir_resolved = snap_dir.resolve(strict=False)
+        snap_dir_resolved.relative_to(root_resolved)
+    except (OSError, ValueError):
+        logger.warning("Rejected snapshot id outside snapshot root: %s", snapshot_id)
+        return False
 
     if not snap_dir.is_dir():
         return False
@@ -593,6 +602,14 @@ def restore_quick_snapshot(
             continue
 
         dst = home / rel
+
+        try:
+            src.resolve(strict=True).relative_to(snap_dir_resolved)
+            dst.resolve(strict=False).relative_to(home_resolved)
+        except (OSError, ValueError):
+            logger.warning("Skipped unsafe snapshot restore path: %s", rel)
+            continue
+
         dst.parent.mkdir(parents=True, exist_ok=True)
 
         try:
